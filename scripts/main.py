@@ -49,35 +49,35 @@ def convert_diffusers_name_to_compvis(key):
     if match(m, re_unet_down_blocks_res):
         block = f"diffusion_model_input_blocks_{1 + m[0] * 3 + m[1]}_0_"
         if m[2].startswith('conv1'):
-            return f"{block}in_layers_2{m[2].removeprefix('conv1')}"
+            return f"{block}in_layers_2{m[2][len('conv1'):]}"
         elif m[2].startswith('conv2'):
-            return f"{block}out_layers_3{m[2].removeprefix('conv2')}"
+            return f"{block}out_layers_3{m[2][len('conv2'):]}"
         elif m[2].startswith('time_emb_proj'):
-            return f"{block}emb_layers_1{m[2].removeprefix('time_emb_proj')}"
+            return f"{block}emb_layers_1{m[2][len('time_emb_proj'):]}"
         elif m[2].startswith('conv_shortcut'):
-            return f"{block}skip_connection{m[2].removeprefix('conv_shortcut')}"
+            return f"{block}skip_connection{m[2][len('conv_shortcut'):]}"
 
     if match(m, re_unet_mid_blocks_res):
         block = f"diffusion_model_middle_block_{m[0]*2}_"
         if m[1].startswith('conv1'):
-            return f"{block}in_layers_2{m[1].removeprefix('conv1')}"
+            return f"{block}in_layers_2{m[1][len('conv1'):]}"
         elif m[1].startswith('conv2'):
-            return f"{block}out_layers_3{m[1].removeprefix('conv2')}"
+            return f"{block}out_layers_3{m[1][len('conv2'):]}"
         elif m[1].startswith('time_emb_proj'):
-            return f"{block}emb_layers_1{m[1].removeprefix('time_emb_proj')}"
+            return f"{block}emb_layers_1{m[1][len('time_emb_proj'):]}"
         elif m[1].startswith('conv_shortcut'):
-            return f"{block}skip_connection{m[1].removeprefix('conv_shortcut')}"
+            return f"{block}skip_connection{m[1][len('conv_shortcut'):]}"
 
     if match(m, re_unet_up_blocks_res):
         block = f"diffusion_model_output_blocks_{m[0] * 3 + m[1]}_0_"
         if m[2].startswith('conv1'):
-            return f"{block}in_layers_2{m[2].removeprefix('conv1')}"
+            return f"{block}in_layers_2{m[2][len('conv1'):]}"
         elif m[2].startswith('conv2'):
-            return f"{block}out_layers_3{m[2].removeprefix('conv2')}"
+            return f"{block}out_layers_3{m[2][len('conv2'):]}"
         elif m[2].startswith('time_emb_proj'):
-            return f"{block}emb_layers_1{m[2].removeprefix('time_emb_proj')}"
+            return f"{block}emb_layers_1{m[2][len('time_emb_proj'):]}"
         elif m[2].startswith('conv_shortcut'):
-            return f"{block}skip_connection{m[2].removeprefix('conv_shortcut')}"
+            return f"{block}skip_connection{m[2][len('conv_shortcut'):]}"
 
     if match(m, re_unet_downsample):
         return f"diffusion_model_input_blocks_{m[0]*3+3}_0_op{m[1]}"
