@@ -2,13 +2,36 @@
 Modified version for full net lora
 (Lora for ResBlock and up/down sample block)
 '''
-import os
+import os, sys
 import re
 import torch
 
 from modules import shared, devices, sd_models
 import lora
+from locon_compvis import LoConModule, LoConNetworkCompvis, create_network_and_apply_compvis
 
+
+try:
+    '''
+    Hijack Additional Network extension
+    '''
+    now_dir = os.path.dirname(os.path.abspath(__file__))
+    addnet_path = os.path.join(now_dir, '..', '..', 'sd-webui-additional-networks/scripts')
+    sys.path.append(addnet_path)
+    import lora_compvis
+    import scripts
+    scripts.lora_compvis = lora_compvis
+    scripts.lora_compvis.LoRAModule = LoConModule
+    scripts.lora_compvis.LoRANetworkCompvis = LoConNetworkCompvis
+    scripts.lora_compvis.create_network_and_apply_compvis = create_network_and_apply_compvis
+    print('LoCon Extension hijack addnet extension successfully')
+except:
+    print('Additional Network extension not installed, Only hijack built-in lora')
+
+
+'''
+Hijack sd-webui LoRA
+'''
 re_digits = re.compile(r"\d+")
 
 re_unet_down_blocks = re.compile(r"lora_unet_down_blocks_(\d+)_attentions_(\d+)_(.+)")
@@ -123,7 +146,7 @@ def load_lora(name, filename):
     for key_diffusers, weight in sd.items():
         fullkey = convert_diffusers_name_to_compvis(key_diffusers)
         key, lora_key = fullkey.split(".", 1)
-
+        
         sd_module = shared.sd_model.lora_layer_mapping.get(key, None)
         if sd_module is None:
             keys_failed_to_match.append(key_diffusers)
@@ -139,6 +162,7 @@ def load_lora(name, filename):
             continue
 
         if type(sd_module) == torch.nn.Linear:
+            weight = weight.reshape(weight.shape[0], -1)
             module = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
         elif type(sd_module) == torch.nn.Conv2d:
             if lora_key == "lora_down.weight":
@@ -147,7 +171,7 @@ def load_lora(name, filename):
                 module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], (1, 1), bias=False)
         else:
             assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
-
+        
         with torch.no_grad():
             module.weight.copy_(weight)
 
@@ -164,9 +188,12 @@ def load_lora(name, filename):
 
     if len(keys_failed_to_match) > 0:
         print(f"Failed to match keys when loading Lora {filename}: {keys_failed_to_match}")
-
+    
+    import json
+    print(json.dumps({k:str(v) for k,v in shared.sd_model.lora_layer_mapping.items()}, indent=2))
     return lora
 
 
 lora.convert_diffusers_name_to_compvis = convert_diffusers_name_to_compvis
 lora.load_lora = load_lora
+print('LoCon Extension hijack built-in lora successfully')
