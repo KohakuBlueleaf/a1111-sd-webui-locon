@@ -188,9 +188,7 @@ def load_lora(name, filename):
 
     if len(keys_failed_to_match) > 0:
         print(f"Failed to match keys when loading Lora {filename}: {keys_failed_to_match}")
-    
-    import json
-    print(json.dumps({k:str(v) for k,v in shared.sd_model.lora_layer_mapping.items()}, indent=2))
+
     return lora
 
 
