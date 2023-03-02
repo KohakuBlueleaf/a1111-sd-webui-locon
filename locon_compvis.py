@@ -91,7 +91,8 @@ def create_network_and_apply_compvis(du_state_dict, multiplier_tenc, multiplier_
 class LoConNetworkCompvis(torch.nn.Module):
     # UNET_TARGET_REPLACE_MODULE = ["Transformer2DModel", "Attention"]
     # TEXT_ENCODER_TARGET_REPLACE_MODULE = ["CLIPAttention", "CLIPMLP"]
-    UNET_TARGET_REPLACE_MODULE = ["SpatialTransformer", "ResBlock", "Downsample", "Upsample"]  # , "Attention"]
+    LOCON_TARGET = ["ResBlock", "Downsample", "Upsample"]
+    UNET_TARGET_REPLACE_MODULE = ["SpatialTransformer"] + LOCON_TARGET  # , "Attention"]
     TEXT_ENCODER_TARGET_REPLACE_MODULE = ["ResidualAttentionBlock", "CLIPAttention", "CLIPMLP"]
 
     LORA_PREFIX_UNET = 'lora_unet'
@@ -255,6 +256,12 @@ class LoConNetworkCompvis(torch.nn.Module):
                         if layer == "Linear" or layer == "Conv2d":
                             if '_resblocks_23_' in lora_name:  # ignore last block in StabilityAi Text Encoder
                                 break
+                            if f'{lora_name}.lora_down.weight' not in comp_state_dict:
+                                if module.__class__.__name__ in LoConNetworkCompvis.LOCON_TARGET:
+                                    continue
+                                else:
+                                    print(f'Cannot find: "{lora_name}", skipped')
+                                    continue
                             rank = comp_state_dict[f'{lora_name}.lora_down.weight'].shape[0]
                             alpha = comp_state_dict[f'{lora_name}.alpha'].item()
                             lora = LoConModule(lora_name, child_module, multiplier, rank, alpha)
