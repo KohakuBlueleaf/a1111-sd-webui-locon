@@ -263,7 +263,7 @@ class LoConNetworkCompvis(torch.nn.Module):
                                     print(f'Cannot find: "{lora_name}", skipped')
                                     continue
                             rank = comp_state_dict[f'{lora_name}.lora_down.weight'].shape[0]
-                            alpha = comp_state_dict[f'{lora_name}.alpha'].item()
+                            alpha = comp_state_dict.get(f'{lora_name}.alpha', torch.tensor(rank)).item()
                             lora = LoConModule(lora_name, child_module, multiplier, rank, alpha)
                             loras.append(lora)
 
