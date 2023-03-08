@@ -133,7 +133,42 @@ class LoraUpDownModule:
         self.up = None
         self.down = None
         self.alpha = None
+        self.dim = None
+    
+    def inference(self, x):
+        return self.up(self.down(x))
 
+
+class LoraHadaModule:
+    def __init__(self):
+        self.w1a = None
+        self.w1b = None
+        self.w2a = None
+        self.w2b = None
+        self.alpha = None
+        self.dim = None
+        self.op = None
+        self.extra_args = {}
+        self.shape = None
+    
+    def inference(self, x):
+        return self.op(
+            x,
+            ((self.w1a @ self.w1b) * (self.w2a @ self.w2b)).view(self.shape),
+            **self.extra_args
+        )
+
+
+CON_KEY = {
+    "lora_up.weight",
+    "lora_down.weight"
+}
+HADA_KEY = {
+    "hada_w1_a",
+    "hada_w1_b",
+    "hada_w2_a",
+    "hada_w2_b",
+}
 
 def load_lora(name, filename):
     lora = LoraModule(name)
@@ -160,31 +195,64 @@ def load_lora(name, filename):
         if lora_key == "alpha":
             lora_module.alpha = weight.item()
             continue
-
-        if type(sd_module) == torch.nn.Linear:
-            weight = weight.reshape(weight.shape[0], -1)
-            module = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
-        elif type(sd_module) == torch.nn.Conv2d:
-            if lora_key == "lora_down.weight":
-                module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], sd_module.kernel_size, sd_module.stride, sd_module.padding, bias=False)
-            elif lora_key == "lora_up.weight":
-                module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], (1, 1), bias=False)
-        else:
-            assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
         
-        with torch.no_grad():
-            module.weight.copy_(weight)
+        if lora_key in CON_KEY:
+            if type(sd_module) == torch.nn.Linear:
+                weight = weight.reshape(weight.shape[0], -1)
+                module = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
+            elif type(sd_module) == torch.nn.Conv2d:
+                if lora_key == "lora_down.weight":
+                    module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], sd_module.kernel_size, sd_module.stride, sd_module.padding, bias=False)
+                elif lora_key == "lora_up.weight":
+                    module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], (1, 1), bias=False)
+            else:
+                assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
+            
+            with torch.no_grad():
+                module.weight.copy_(weight)
 
-        module.to(device=devices.device, dtype=devices.dtype)
+            module.to(device=devices.device, dtype=torch.float32)
+            module.requires_grad_(False)
 
-        if lora_key == "lora_up.weight":
-            lora_module.up = module
-        elif lora_key == "lora_down.weight":
-            lora_module.down = module
+            if lora_key == "lora_up.weight":
+                lora_module.up = module
+            elif lora_key == "lora_down.weight":
+                lora_module.down = module
+                lora_module.dim = weight.shape[0]
+        elif lora_key in HADA_KEY:
+            if type(lora_module) != LoraHadaModule:
+                alpha = lora_module.alpha
+                lora_module = LoraHadaModule()
+                lora_module.alpha = alpha
+                lora.modules[key] = lora_module
+            lora_module.shape = sd_module.weight.shape
+            
+            weight = weight.to(device=devices.device, dtype=torch.float32)
+            weight.requires_grad_(False)
+            
+            if lora_key == 'hada_w1_a':
+                lora_module.w1a = weight
+            elif lora_key == 'hada_w1_b':
+                lora_module.w1b = weight
+                lora_module.dim = weight.shape[0]
+            elif lora_key == 'hada_w2_a':
+                lora_module.w2a = weight
+            elif lora_key == 'hada_w2_b':
+                lora_module.w2b = weight
+            
+            if type(sd_module) == torch.nn.Linear:
+                lora_module.op = torch.nn.functional.linear
+            elif type(sd_module) == torch.nn.Conv2d:
+                lora_module.op = torch.nn.functional.conv2d
+                lora_module.extra_args = {
+                    'stride': sd_module.stride,
+                    'padding': sd_module.padding
+                }
+            else:
+                assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
+            
         else:
             assert False, f'Bad Lora layer name: {key_diffusers} - must end in lora_up.weight, lora_down.weight or alpha'
-
-    # print(shared.sd_model.lora_layer_mapping)
 
     if len(keys_failed_to_match) > 0:
         print(f"Failed to match keys when loading Lora {filename}: {keys_failed_to_match}")
@@ -192,6 +260,24 @@ def load_lora(name, filename):
     return lora
 
 
+def lora_forward(module, input, res):
+    if len(lora.loaded_loras) == 0:
+        return res
+    
+    lora_layer_name = getattr(module, 'lora_layer_name', None)
+    for lora_m in lora.loaded_loras:
+        module = lora_m.modules.get(lora_layer_name, None)
+        if module is not None and lora_m.multiplier:
+            scale = lora_m.multiplier * (module.alpha / module.dim if module.alpha else 1.0)
+            if shared.opts.lora_apply_to_outputs and res.shape == input.shape:
+                res = res + module.inference(res) * scale
+            else:
+                res = res + module.inference(input) * scale
+
+    return res
+
+
 lora.convert_diffusers_name_to_compvis = convert_diffusers_name_to_compvis
 lora.load_lora = load_lora
+lora.lora_forward = lora_forward
 print('LoCon Extension hijack built-in lora successfully')
