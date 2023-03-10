@@ -128,15 +128,45 @@ class LoraModule:
         self.mtime = None
 
 
+class FakeModule(torch.nn.Module):
+    def __init__(self, weight, func):
+        super().__init__()
+        self.weight = weight
+        self.func = func
+    
+    def forward(self, x):
+        return self.func(x)
+
+
 class LoraUpDownModule:
     def __init__(self):
-        self.up = None
-        self.down = None
+        self.up_model = None
+        self.down_model = None
         self.alpha = None
         self.dim = None
+        self.op = None
+        self.extra_args = {}
+        self.shape = None
+        self.bias = None
+        self.up = None
+    
+    def down(self, x):
+        return x
     
     def inference(self, x):
-        return self.up(self.down(x))
+        if hasattr(self, 'bias') and isinstance(self.bias, torch.Tensor):
+            out_dim = self.up_model.weight.size(0)
+            rank = self.down_model.weight.size(0)
+            rebuild_weight = (
+                self.up_model.weight.reshape(out_dim, -1) @ self.down_model.weight.reshape(rank, -1)
+                + self.bias
+            ).reshape(self.shape)
+            return self.op(
+                x, rebuild_weight,
+                **self.extra_args
+            )
+        else:
+            return self.up_model(self.down_model(x))
 
 
 class LoraHadaModule:
@@ -150,11 +180,20 @@ class LoraHadaModule:
         self.op = None
         self.extra_args = {}
         self.shape = None
+        self.bias = None
+        self.up = None
+    
+    def down(self, x):
+        return x
     
     def inference(self, x):
+        if hasattr(self, 'bias') and isinstance(self.bias, torch.Tensor):
+            bias = self.bias
+        else:
+            bias = 0
         return self.op(
             x,
-            ((self.w1a @ self.w1b) * (self.w2a @ self.w2b)).view(self.shape),
+            ((self.w1a @ self.w1b) * (self.w2a @ self.w2b) + bias).view(self.shape),
             **self.extra_args
         )
 
@@ -196,18 +235,45 @@ def load_lora(name, filename):
             lora_module.alpha = weight.item()
             continue
         
+        if 'bias_' in lora_key:
+            if lora_module.bias is None:
+                lora_module.bias = [None, None, None]
+            if 'bias_indices' == lora_key:
+                lora_module.bias[0] = weight
+            elif 'bias_values' == lora_key:
+                lora_module.bias[1] = weight
+            elif 'bias_size' == lora_key:
+                lora_module.bias[2] = weight
+            
+            if all((i is not None) for i in lora_module.bias):
+                print('build bias')
+                lora_module.bias = torch.sparse_coo_tensor(
+                    lora_module.bias[0],
+                    lora_module.bias[1],
+                    tuple(lora_module.bias[2]),
+                ).to(device=devices.device, dtype=torch.float32)
+                lora_module.bias.requires_grad_(False)
+            continue
+        
         if lora_key in CON_KEY:
             if type(sd_module) == torch.nn.Linear:
                 weight = weight.reshape(weight.shape[0], -1)
                 module = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
+                lora_module.op = torch.nn.functional.linear
             elif type(sd_module) == torch.nn.Conv2d:
                 if lora_key == "lora_down.weight":
                     module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], sd_module.kernel_size, sd_module.stride, sd_module.padding, bias=False)
                 elif lora_key == "lora_up.weight":
                     module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], (1, 1), bias=False)
+                lora_module.op = torch.nn.functional.conv2d
+                lora_module.extra_args = {
+                    'stride': sd_module.stride,
+                    'padding': sd_module.padding
+                }
             else:
                 assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
             
+            lora_module.shape = sd_module.weight.shape
             with torch.no_grad():
                 module.weight.copy_(weight)
 
@@ -215,15 +281,21 @@ def load_lora(name, filename):
             module.requires_grad_(False)
 
             if lora_key == "lora_up.weight":
-                lora_module.up = module
+                lora_module.up_model = module
+                lora_module.up = FakeModule(
+                    lora_module.up_model.weight,
+                    lora_module.inference
+                )
             elif lora_key == "lora_down.weight":
-                lora_module.down = module
+                lora_module.down_model = module
                 lora_module.dim = weight.shape[0]
         elif lora_key in HADA_KEY:
             if type(lora_module) != LoraHadaModule:
                 alpha = lora_module.alpha
+                bias = lora_module.bias
                 lora_module = LoraHadaModule()
                 lora_module.alpha = alpha
+                lora_module.bias = bias
                 lora.modules[key] = lora_module
             lora_module.shape = sd_module.weight.shape
             
@@ -232,6 +304,10 @@ def load_lora(name, filename):
             
             if lora_key == 'hada_w1_a':
                 lora_module.w1a = weight
+                lora_module.up = FakeModule(
+                    lora_module.w1a,
+                    lora_module.inference
+                )
             elif lora_key == 'hada_w1_b':
                 lora_module.w1b = weight
                 lora_module.dim = weight.shape[0]
