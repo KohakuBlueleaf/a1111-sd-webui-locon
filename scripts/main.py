@@ -268,12 +268,24 @@ def lora_forward(module, input, res):
     for lora_m in lora.loaded_loras:
         module = lora_m.modules.get(lora_layer_name, None)
         if module is not None and lora_m.multiplier:
-            scale = lora_m.multiplier * (module.alpha / module.dim if module.alpha else 1.0)
-            if shared.opts.lora_apply_to_outputs and res.shape == input.shape:
-                res = res + module.inference(res) * scale
+            if isinstance(module, LoraUpDownModule):
+                scale = lora_m.multiplier * (module.alpha / module.down.weight.size(0) if module.alpha else 1.0)
             else:
-                res = res + module.inference(input) * scale
-
+                scale = lora_m.multiplier * (module.alpha / module.dim if module.alpha else 1.0)
+            
+            if shared.opts.lora_apply_to_outputs and res.shape == input.shape:
+                x = res
+            else:
+                x = input
+            
+            if hasattr(module, 'inference'):
+                res = res + module.inference(x) * scale
+            elif hasattr(module, 'up'):
+                res = res + module.up(module.down(x)) * scale
+            else:
+                raise NotImplementedError(
+                    "Your settings, extensions or models are not compatible with each other."
+                )
     return res
 
 
