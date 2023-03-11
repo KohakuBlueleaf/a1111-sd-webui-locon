@@ -251,7 +251,7 @@ def load_lora(name, filename):
                     lora_module.bias[0],
                     lora_module.bias[1],
                     tuple(lora_module.bias[2]),
-                ).to(device=devices.device, dtype=torch.float32)
+                ).to(device=devices.device, dtype=devices.dtype)
                 lora_module.bias.requires_grad_(False)
             continue
         
@@ -277,7 +277,7 @@ def load_lora(name, filename):
             with torch.no_grad():
                 module.weight.copy_(weight)
 
-            module.to(device=devices.device, dtype=torch.float32)
+            module.to(device=devices.device, dtype=devices.dtype)
             module.requires_grad_(False)
 
             if lora_key == "lora_up.weight":
@@ -299,7 +299,7 @@ def load_lora(name, filename):
                 lora.modules[key] = lora_module
             lora_module.shape = sd_module.weight.shape
             
-            weight = weight.to(device=devices.device, dtype=torch.float32)
+            weight = weight.to(device=devices.device, dtype=devices.dtype)
             weight.requires_grad_(False)
             
             if lora_key == 'hada_w1_a':
