@@ -344,8 +344,8 @@ def lora_forward(module, input, res):
     for lora_m in lora.loaded_loras:
         module = lora_m.modules.get(lora_layer_name, None)
         if module is not None and lora_m.multiplier:
-            if isinstance(module, LoraUpDownModule):
-                scale = lora_m.multiplier * (module.alpha / module.down.weight.size(0) if module.alpha else 1.0)
+            if hasattr(module, 'up'):
+                scale = lora_m.multiplier * (module.alpha / module.up.weight.size(1) if module.alpha else 1.0)
             else:
                 scale = lora_m.multiplier * (module.alpha / module.dim if module.alpha else 1.0)
             
