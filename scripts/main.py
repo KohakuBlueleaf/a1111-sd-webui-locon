@@ -159,6 +159,32 @@ class LoraHadaModule:
         )
 
 
+class ConceptModule:
+    def __init__(self):
+        self.mask = None
+        self.orig_weight = None
+        self.alpha = None
+        self.op = None
+        self.extra_args = {}
+        self.shape = None
+    
+    def down(self, x):
+        return x
+    
+    def up(self, x):
+        return self.inference(x)
+    
+    def inference(self, x):
+        if not isinstance(self.mask, torch.Tensor):
+            return 0
+        return self.op(
+            x,
+            (self.orig_weight*(self.mask-1)).view(self.shape),
+            **self.extra_args
+        )
+
+
+
 CON_KEY = {
     "lora_up.weight",
     "lora_down.weight"
@@ -168,6 +194,12 @@ HADA_KEY = {
     "hada_w1_b",
     "hada_w2_a",
     "hada_w2_b",
+}
+CONCEPT_KEY = {
+    "concept_mask",
+    "concept_mask.values",
+    "concept_mask.indices",
+    "concept_mask.shape",
 }
 
 def load_lora(name, filename):
@@ -250,7 +282,45 @@ def load_lora(name, filename):
                 }
             else:
                 assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
+        elif lora_key in CONCEPT_KEY:
+            if type(lora_module) != ConceptModule:
+                lora_module = ConceptModule()
+                lora.modules[key] = lora_module
+            lora_module.shape = sd_module.weight.shape
+            lora_module.orig_weight = sd_module.weight.data
             
+            if lora_module.mask is None:
+                lora_module.mask = [None, None, None]
+            if 'concept_mask.indices' == lora_key:
+                lora_module.mask[0] = weight
+            elif 'concept_mask.values' == lora_key:
+                lora_module.mask[1] = weight
+            elif 'concept_mask.shape' == lora_key:
+                lora_module.mask[2] = weight
+            else:
+                weight = weight.to(device=devices.device, dtype=devices.dtype)
+                weight.requires_grad_(False)
+                # weight[weight>torch.quantile(weight.float(), 0.1)] = 1.0
+                weight[torch.abs(weight)<torch.quantile(torch.abs(weight).float(), 0.9)] = 0
+                lora_module.mask = weight+1
+            
+            if isinstance(lora_module.mask, list) and all((i is not None) for i in lora_module.mask):
+                lora_module.mask = torch.sparse_coo_tensor(
+                    lora_module.mask[0],
+                    lora_module.mask[1],
+                    tuple(lora_module.mask[2]),
+                ).to(device=devices.device).to_dense()
+            
+            if type(sd_module) == torch.nn.Linear:
+                lora_module.op = torch.nn.functional.linear
+            elif type(sd_module) == torch.nn.Conv2d:
+                lora_module.op = torch.nn.functional.conv2d
+                lora_module.extra_args = {
+                    'stride': sd_module.stride,
+                    'padding': sd_module.padding
+                }
+            else:
+                assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
         else:
             assert False, f'Bad Lora layer name: {key_diffusers} - must end in lora_up.weight, lora_down.weight or alpha'
 
