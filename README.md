@@ -1,15 +1,16 @@
 # a1111-sd-webui-locon
 
-An extension for loading locon model in sd-webui.
+An extension for loading lycoris model in sd-webui. (include locon and loha)
 
-### LoCon - LoRA for Convolution network:
-https://github.com/KohakuBlueleaf/LoCon
+### LyCORIS
+https://github.com/KohakuBlueleaf/LyCORIS
 
 ### usage
 Install and use locon model as lora model. <br>
 Make sure your sd-webui has built-in lora
 
 ### Additional Network
+**LoHa and LoCon with cp decomposition is not supported yet**
 You can load LoCon model in kohya-ss' additional network extension.<br>
 Just install addnet ext and then install this ext.<br>
 Finally, use locon model as lora model.<br>
