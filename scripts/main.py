@@ -15,6 +15,8 @@ try:
     '''
     Hijack Additional Network extension
     '''
+    # skip addnet since don't support new version
+    raise
     now_dir = os.path.dirname(os.path.abspath(__file__))
     addnet_path = os.path.join(now_dir, '..', '..', 'sd-webui-additional-networks/scripts')
     sys.path.append(addnet_path)
@@ -33,6 +35,10 @@ except:
 Hijack sd-webui LoRA
 '''
 re_digits = re.compile(r"\d+")
+
+re_unet_conv_in = re.compile(r"lora_unet_conv_in(.+)")
+re_unet_conv_out = re.compile(r"lora_unet_conv_out(.+)")
+re_unet_time_embed = re.compile(r"lora_unet_time_embedding_linear_(\d+)(.+)")
 
 re_unet_down_blocks = re.compile(r"lora_unet_down_blocks_(\d+)_attentions_(\d+)_(.+)")
 re_unet_mid_blocks = re.compile(r"lora_unet_mid_block_attentions_(\d+)_(.+)")
@@ -59,7 +65,16 @@ def convert_diffusers_name_to_compvis(key):
         return True
 
     m = []
-
+    
+    if match(m, re_unet_conv_in):
+        return f'diffusion_model_input_blocks_0_0{m[0]}'
+    
+    if match(m, re_unet_conv_out):
+        return f'diffusion_model_out_2{m[0]}'
+    
+    if match(m, re_unet_time_embed):
+        return f"diffusion_model_time_embed_{m[0]*2-2}{m[1]}"
+    
     if match(m, re_unet_down_blocks):
         return f"diffusion_model_input_blocks_{1 + m[0] * 3 + m[1]}_1_{m[2]}"
 
@@ -136,6 +151,22 @@ class FakeModule(torch.nn.Module):
     
     def forward(self, x):
         return self.func(x)
+
+
+class FullModule:
+    def __init__(self):
+        self.weight = None
+        self.alpha = None
+        self.op = None
+        self.extra_args = {}
+        self.shape = None
+        self.up = None
+    
+    def down(self, x):
+        return x
+    
+    def inference(self, x):
+        return self.op(x, self.weight, **self.extra_args)
 
 
 class LoraUpDownModule:
@@ -258,6 +289,32 @@ def load_lora(name, filename):
             lora_module.alpha = weight.item()
             continue
         
+        if lora_key == "diff":
+            weight = weight.to(device=devices.device, dtype=devices.dtype)
+            weight.requires_grad_(False)
+            lora_module = FullModule()
+            lora.modules[key] = lora_module
+            lora_module.weight = weight
+            lora_module.alpha = weight.size(1)
+            lora_module.up = FakeModule(
+                weight,
+                lora_module.inference
+            )
+            lora_module.up.to(device=devices.device, dtype=devices.dtype)
+            if len(weight.shape)==2:
+                lora_module.op = torch.nn.functional.linear
+                lora_module.extra_args = {
+                    'bias': None
+                }
+            else:
+                lora_module.op = torch.nn.functional.conv2d
+                lora_module.extra_args = {
+                    'stride': sd_module.stride,
+                    'padding': sd_module.padding,
+                    'bias': None
+                }
+            continue
+        
         if 'bias_' in lora_key:
             if lora_module.bias is None:
                 lora_module.bias = [None, None, None]
@@ -370,6 +427,7 @@ def load_lora(name, filename):
             assert False, f'Bad Lora layer name: {key_diffusers} - must end in lora_up.weight, lora_down.weight or alpha'
 
     if len(keys_failed_to_match) > 0:
+        print(shared.sd_model.lora_layer_mapping)
         print(f"Failed to match keys when loading Lora {filename}: {keys_failed_to_match}")
 
     return lora
