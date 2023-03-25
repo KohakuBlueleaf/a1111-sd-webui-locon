@@ -7,6 +7,9 @@ import re
 import torch
 
 from modules import shared, devices, sd_models
+now_dir = os.path.dirname(os.path.abspath(__file__))
+lora_path = os.path.join(now_dir, '..', '..', '..', 'extensions-builtin/Lora')
+sys.path.insert(0, lora_path)
 import lora
 from locon_compvis import LoConModule, LoConNetworkCompvis, create_network_and_apply_compvis
 
