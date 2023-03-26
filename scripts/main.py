@@ -128,9 +128,6 @@ def convert_diffusers_name_to_compvis(key, is_sd2):
     if match(m, re_unet_upsample):
         return f"diffusion_model_output_blocks_{m[0]*3 + 2}_{1+(m[0]!=0)}_conv{m[1]}"
 
-    if match(m, re_text_block):
-        return f"transformer_text_model_encoder_layers_{m[0]}_{m[1]}"
-
     if match(m, r"lora_te_text_model_encoder_layers_(\d+)_(.+)"):
         if is_sd2:
             if 'mlp_fc1' in m[1]:
@@ -284,11 +281,12 @@ def load_lora(name, filename):
     lora.mtime = os.path.getmtime(filename)
 
     sd = sd_models.read_state_dict(filename)
+    is_sd2 = 'model_transformer_resblocks' in shared.sd_model.lora_layer_mapping
 
     keys_failed_to_match = []
 
     for key_diffusers, weight in sd.items():
-        fullkey = convert_diffusers_name_to_compvis(key_diffusers)
+        fullkey = convert_diffusers_name_to_compvis(key_diffusers, is_sd2)
         key, lora_key = fullkey.split(".", 1)
         
         sd_module = shared.sd_model.lora_layer_mapping.get(key, None)
