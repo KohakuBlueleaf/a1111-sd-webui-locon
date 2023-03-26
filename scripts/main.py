@@ -11,6 +11,8 @@ now_dir = os.path.dirname(os.path.abspath(__file__))
 lora_path = os.path.join(now_dir, '..', '..', '..', 'extensions-builtin/Lora')
 sys.path.insert(0, lora_path)
 import lora
+new_lora = 'lora_calc_updown' in dir(lora)
+
 from locon_compvis import LoConModule, LoConNetworkCompvis, create_network_and_apply_compvis
 
 
@@ -334,7 +336,7 @@ def load_lora(name, filename):
                     lora_module.bias[0],
                     lora_module.bias[1],
                     tuple(lora_module.bias[2]),
-                ).to(device=devices.device, dtype=devices.dtype)
+                ).to(device=devices.cpu if new_lora else devices.device, dtype=devices.dtype)
                 lora_module.bias.requires_grad_(False)
             continue
         
@@ -465,7 +467,68 @@ def lora_forward(module, input, res):
     return res
 
 
+def _rebuild_conventional(up, down, shape):
+    return (up.reshape(up.size(0), -1) @ down.reshape(down.size(0), -1)).reshape(shape)
+
+
+def _rebuild_cp_decomposition(up, down, mid):
+    up = up.reshape(up.size(0), -1)
+    down = down.reshape(down.size(0), -1)
+    return torch.einsum('n m k l, i n, m j -> i j k l', mid, up, down)
+
+
+def rebuild_weight(module, orig_weight) -> torch.Tensor:
+    output_shape = orig_weight.shape
+    if isinstance(module, LoraUpDownModule):
+        up = module.up_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
+        down = module.down_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
+        
+        if (mid:=module.mid_model) is not None:
+            # cp-decomposition
+            mid = mid.weight.to(orig_weight.device, dtype=orig_weight.dtype)
+            updown = _rebuild_cp_decomposition(up, down, mid)
+        else:
+            updown = _rebuild_conventional(up, down, output_shape)
+        
+    elif isinstance(module, LoraHadaModule):
+        w1a = module.w1a.to(orig_weight.device, dtype=orig_weight.dtype)
+        w1b = module.w1b.to(orig_weight.device, dtype=orig_weight.dtype)
+        w2a = module.w2a.to(orig_weight.device, dtype=orig_weight.dtype)
+        w2b = module.w2b.to(orig_weight.device, dtype=orig_weight.dtype)
+        
+        if module.t1 is not None:
+            t1 = module.t1.to(orig_weight.device, dtype=orig_weight.dtype)
+            updown1 = pro3(t1, w1a, w1b)
+        else:
+            updown1 = _rebuild_conventional(w1a, w1b, output_shape)
+        if module.t2 is not None:
+            t2 = module.t2.to(orig_weight.device, dtype=orig_weight.dtype)
+            updown2 = pro3(t2, w2a, w2b)
+        else:
+            updown2 = _rebuild_conventional(w2a, w2b, output_shape)
+        
+        updown = updown1 * updown2
+    
+    elif isinstance(module, FullModule):
+        updown = module.weight.to(orig_weight.device, dtype=orig_weight.dtype)
+    
+    if module.bias != None:
+        updown = updown.reshape(module.bias.shape)
+        updown += module.bias.to(orig_weight.device, dtype=orig_weight.dtype)
+        updown = updown.reshape(output_shape)
+    
+    return updown
+
+
+def lora_calc_updown(lora, module, target):
+    with torch.no_grad():
+        updown = rebuild_weight(module, target)
+        updown = updown * lora.multiplier * (module.alpha / module.up.weight.shape[1] if module.alpha else 1.0)
+        return updown
+
+
 lora.convert_diffusers_name_to_compvis = convert_diffusers_name_to_compvis
 lora.load_lora = load_lora
 lora.lora_forward = lora_forward
+lora.lora_calc_updown = lora_calc_updown
 print('LoCon Extension hijack built-in lora successfully')
