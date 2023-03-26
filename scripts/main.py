@@ -59,7 +59,7 @@ re_unet_upsample = re.compile(r"lora_unet_up_blocks_(\d+)_upsamplers_0_conv(.+)"
 re_text_block = re.compile(r"lora_te_text_model_encoder_layers_(\d+)_(.+)")
 
 
-def convert_diffusers_name_to_compvis(key):
+def convert_diffusers_name_to_compvis(key, is_sd2):
     def match(match_list, regex):
         r = re.match(regex, key)
         if not r:
@@ -129,6 +129,17 @@ def convert_diffusers_name_to_compvis(key):
         return f"diffusion_model_output_blocks_{m[0]*3 + 2}_{1+(m[0]!=0)}_conv{m[1]}"
 
     if match(m, re_text_block):
+        return f"transformer_text_model_encoder_layers_{m[0]}_{m[1]}"
+
+    if match(m, r"lora_te_text_model_encoder_layers_(\d+)_(.+)"):
+        if is_sd2:
+            if 'mlp_fc1' in m[1]:
+                return f"model_transformer_resblocks_{m[0]}_{m[1].replace('mlp_fc1', 'mlp_c_fc')}"
+            elif 'mlp_fc2' in m[1]:
+                return f"model_transformer_resblocks_{m[0]}_{m[1].replace('mlp_fc2', 'mlp_c_proj')}"
+            else:
+                return f"model_transformer_resblocks_{m[0]}_{m[1].replace('self_attn', 'attn')}"
+
         return f"transformer_text_model_encoder_layers_{m[0]}_{m[1]}"
 
     return key
