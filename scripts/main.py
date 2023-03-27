@@ -350,7 +350,9 @@ def load_lora(name, filename):
             continue
         
         if lora_key in CON_KEY:
-            if type(sd_module) == torch.nn.Linear:
+            if (type(sd_module) == torch.nn.Linear
+                or type(sd_module) == torch.nn.modules.linear.NonDynamicallyQuantizableLinear
+                or type(sd_module) == torch.nn.MultiheadAttention):
                 weight = weight.reshape(weight.shape[0], -1)
                 module = torch.nn.Linear(weight.shape[1], weight.shape[0], bias=False)
                 lora_module.op = torch.nn.functional.linear
@@ -426,7 +428,9 @@ def load_lora(name, filename):
             elif lora_key == 'hada_t2':
                 lora_module.t2 = weight
             
-            if type(sd_module) == torch.nn.Linear:
+            if (type(sd_module) == torch.nn.Linear
+                or type(sd_module) == torch.nn.modules.linear.NonDynamicallyQuantizableLinear
+                or type(sd_module) == torch.nn.MultiheadAttention):
                 lora_module.op = torch.nn.functional.linear
             elif type(sd_module) == torch.nn.Conv2d:
                 lora_module.op = torch.nn.functional.conv2d
