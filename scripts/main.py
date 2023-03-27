@@ -40,6 +40,7 @@ except:
 Hijack sd-webui LoRA
 '''
 re_digits = re.compile(r"\d+")
+re_x_proj = re.compile(r"(.*)_([qkv]_proj)$")
 
 re_unet_conv_in = re.compile(r"lora_unet_conv_in(.+)")
 re_unet_conv_out = re.compile(r"lora_unet_conv_out(.+)")
@@ -290,7 +291,14 @@ def load_lora(name, filename):
         key, lora_key = fullkey.split(".", 1)
         
         sd_module = shared.sd_model.lora_layer_mapping.get(key, None)
+        
         if sd_module is None:
+            m = re_x_proj.match(key)
+            if m:
+                sd_module = shared.sd_model.lora_layer_mapping.get(m.group(1), None)
+        
+        if sd_module is None:
+            print(key)
             keys_failed_to_match.append(key_diffusers)
             continue
 
@@ -374,7 +382,8 @@ def load_lora(name, filename):
             else:
                 assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
             
-            lora_module.shape = sd_module.weight.shape
+            if hasattr(sd_module, 'weight'):
+                lora_module.shape = sd_module.weight.shape
             with torch.no_grad():
                 module.weight.copy_(weight)
 
@@ -400,7 +409,8 @@ def load_lora(name, filename):
                 lora_module.alpha = alpha
                 lora_module.bias = bias
                 lora.modules[key] = lora_module
-            lora_module.shape = sd_module.weight.shape
+            if hasattr(sd_module, 'weight'):
+                lora_module.shape = sd_module.weight.shape
             
             weight = weight.to(device=devices.device, dtype=devices.dtype)
             weight.requires_grad_(False)
@@ -491,11 +501,13 @@ def _rebuild_cp_decomposition(up, down, mid):
 
 
 def rebuild_weight(module, orig_weight) -> torch.Tensor:
-    output_shape = orig_weight.shape
     if isinstance(module, LoraUpDownModule):
         up = module.up_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         down = module.down_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         
+        output_shape = [up.size(0), down.size(1)]
+        if len(down.shape) == 4:
+            output_shape += down.shape[2:]
         if (mid:=module.mid_model) is not None:
             # cp-decomposition
             mid = mid.weight.to(orig_weight.device, dtype=orig_weight.dtype)
@@ -509,11 +521,16 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         w2a = module.w2a.to(orig_weight.device, dtype=orig_weight.dtype)
         w2b = module.w2b.to(orig_weight.device, dtype=orig_weight.dtype)
         
+        output_shape = [w1a.size(0), w1b.size(1)]
+        if len(w1b.shape) == 4:
+            output_shape += w1b.shape[2:]
+        
         if module.t1 is not None:
             t1 = module.t1.to(orig_weight.device, dtype=orig_weight.dtype)
             updown1 = pro3(t1, w1a, w1b)
         else:
             updown1 = _rebuild_conventional(w1a, w1b, output_shape)
+        
         if module.t2 is not None:
             t2 = module.t2.to(orig_weight.device, dtype=orig_weight.dtype)
             updown2 = pro3(t2, w2a, w2b)
