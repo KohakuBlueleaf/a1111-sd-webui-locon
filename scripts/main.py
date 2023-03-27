@@ -544,6 +544,7 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         updown = updown1 * updown2
     
     elif isinstance(module, FullModule):
+        output_shape = module.weight.shape
         updown = module.weight.to(orig_weight.device, dtype=orig_weight.dtype)
     
     if module.bias != None:
