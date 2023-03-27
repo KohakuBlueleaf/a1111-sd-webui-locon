@@ -322,7 +322,7 @@ def load_lora(name, filename):
                 weight,
                 lora_module.inference
             )
-            lora_module.up.to(device=devices.device, dtype=devices.dtype)
+            lora_module.up.to(device=devices.cpu if new_lora else devices.device, dtype=devices.dtype)
             if len(weight.shape)==2:
                 lora_module.op = torch.nn.functional.linear
                 lora_module.extra_args = {
@@ -387,7 +387,7 @@ def load_lora(name, filename):
             with torch.no_grad():
                 module.weight.copy_(weight)
 
-            module.to(device=devices.device, dtype=devices.dtype)
+            module.to(device=devices.cpu if new_lora else devices.device, dtype=devices.dtype)
             module.requires_grad_(False)
 
             if lora_key == "lora_up.weight":
@@ -401,6 +401,8 @@ def load_lora(name, filename):
             elif lora_key == "lora_down.weight":
                 lora_module.down_model = module
                 lora_module.dim = weight.shape[0]
+            else:
+                print(lora_key)
         elif lora_key in HADA_KEY:
             if type(lora_module) != LoraHadaModule:
                 alpha = lora_module.alpha
@@ -412,7 +414,7 @@ def load_lora(name, filename):
             if hasattr(sd_module, 'weight'):
                 lora_module.shape = sd_module.weight.shape
             
-            weight = weight.to(device=devices.device, dtype=devices.dtype)
+            weight = weight.to(device=devices.cpu if new_lora else devices.device, dtype=devices.dtype)
             weight.requires_grad_(False)
             
             if lora_key == 'hada_w1_a':
@@ -506,13 +508,14 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         down = module.down_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         
         output_shape = [up.size(0), down.size(1)]
-        if len(down.shape) == 4:
-            output_shape += down.shape[2:]
         if (mid:=module.mid_model) is not None:
             # cp-decomposition
             mid = mid.weight.to(orig_weight.device, dtype=orig_weight.dtype)
             updown = _rebuild_cp_decomposition(up, down, mid)
+            output_shape += mid.shape[2:]
         else:
+            if len(down.shape) == 4:
+                output_shape += down.shape[2:]
             updown = _rebuild_conventional(up, down, output_shape)
         
     elif isinstance(module, LoraHadaModule):
@@ -522,13 +525,14 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         w2b = module.w2b.to(orig_weight.device, dtype=orig_weight.dtype)
         
         output_shape = [w1a.size(0), w1b.size(1)]
-        if len(w1b.shape) == 4:
-            output_shape += w1b.shape[2:]
         
         if module.t1 is not None:
             t1 = module.t1.to(orig_weight.device, dtype=orig_weight.dtype)
             updown1 = pro3(t1, w1a, w1b)
+            output_shape += t1.shape[2:]
         else:
+            if len(w1b.shape) == 4:
+                output_shape += w1b.shape[2:]
             updown1 = _rebuild_conventional(w1a, w1b, output_shape)
         
         if module.t2 is not None:
