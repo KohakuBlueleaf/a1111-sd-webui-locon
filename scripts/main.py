@@ -366,6 +366,8 @@ def load_lora(name, filename):
                 lora_module.op = torch.nn.functional.linear
             elif type(sd_module) == torch.nn.Conv2d:
                 if lora_key == "lora_down.weight":
+                    if len(weight.shape) == 2:
+                        weight = weight.reshape(weight.shape[0], -1, 1, 1)
                     if weight.shape[2] != 1 or weight.shape[3] != 1:
                         module = torch.nn.Conv2d(weight.shape[1], weight.shape[0], sd_module.kernel_size, sd_module.stride, sd_module.padding, bias=False)
                     else:
