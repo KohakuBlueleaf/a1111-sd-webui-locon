@@ -504,7 +504,7 @@ def _rebuild_cp_decomposition(up, down, mid):
     return torch.einsum('n m k l, i n, m j -> i j k l', mid, up, down)
 
 
-def rebuild_weight(module, orig_weight) -> torch.Tensor:
+def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
     if isinstance(module, LoraUpDownModule):
         up = module.up_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         down = module.down_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
@@ -529,6 +529,7 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         output_shape = [w1a.size(0), w1b.size(1)]
         
         if module.t1 is not None:
+            output_shape = [w1a.size(1), w1b.size(1)]
             t1 = module.t1.to(orig_weight.device, dtype=orig_weight.dtype)
             updown1 = pro3(t1, w1a, w1b)
             output_shape += t1.shape[2:]
@@ -549,13 +550,17 @@ def rebuild_weight(module, orig_weight) -> torch.Tensor:
         output_shape = module.weight.shape
         updown = module.weight.to(orig_weight.device, dtype=orig_weight.dtype)
     
-    if module.bias != None:
+    if hasattr(module, 'bias') and module.bias != None:
         updown = updown.reshape(module.bias.shape)
         updown += module.bias.to(orig_weight.device, dtype=orig_weight.dtype)
         updown = updown.reshape(output_shape)
     
     if len(output_shape) == 4:
         updown = updown.reshape(output_shape)
+    
+    if orig_weight.size().numel() == updown.size().numel():
+        updown = updown.reshape(orig_weight.shape)
+    
     return updown
 
 
