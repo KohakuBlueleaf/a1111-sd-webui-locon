@@ -61,6 +61,8 @@ re_text_block = re.compile(r"lora_te_text_model_encoder_layers_(\d+)_(.+)")
 
 
 def convert_diffusers_name_to_compvis(key, is_sd2):
+    # I don't know why but some state dict has this kind of thing
+    key = key.replace('text_model_text_model', 'text_model')
     def match(match_list, regex):
         r = re.match(regex, key)
         if not r:
@@ -387,6 +389,8 @@ def load_lora(name, filename):
             if hasattr(sd_module, 'weight'):
                 lora_module.shape = sd_module.weight.shape
             with torch.no_grad():
+                if weight.shape != module.weight.shape:
+                    weight = weight.reshape(module.weight.shape)
                 module.weight.copy_(weight)
 
             module.to(device=devices.cpu if new_lora else devices.device, dtype=devices.dtype)
