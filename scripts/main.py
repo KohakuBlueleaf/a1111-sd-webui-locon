@@ -211,6 +211,7 @@ class LoraUpDownModule:
             ).reshape(self.shape)
             return self.op(
                 x, rebuild_weight,
+                bias=None,
                 **self.extra_args
             )
         else:
@@ -254,6 +255,7 @@ class LoraHadaModule:
             return self.op(
                 x,
                 ((self.w1a @ self.w1b) * (self.w2a @ self.w2b) + bias).view(self.shape),
+                bias=None,
                 **self.extra_args
             )
         else:
@@ -261,6 +263,7 @@ class LoraHadaModule:
                 x,
                 (pro3(self.t1, self.w1a, self.w1b) 
                  * pro3(self.t2, self.w2a, self.w2b) + bias).view(self.shape),
+                bias=None,
                 **self.extra_args
             )
 
