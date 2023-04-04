@@ -268,6 +268,13 @@ class LoraHadaModule:
             )
 
 
+class IA3Module:
+    def __init__(self):
+        self.w = None
+        self.alpha = None
+        self.on_input = None
+
+
 CON_KEY = {
     "lora_up.weight",
     "lora_down.weight",
@@ -280,6 +287,10 @@ HADA_KEY = {
     "hada_t2",
     "hada_w2_a",
     "hada_w2_b",
+}
+IA3_KEY = {
+    "weight",
+    "on_input"
 }
 
 def load_lora(name, filename):
@@ -461,7 +472,15 @@ def load_lora(name, filename):
                 }
             else:
                 assert False, f'Lora layer {key_diffusers} matched a layer with unsupported type: {type(sd_module).__name__}'
+        elif lora_key in IA3_KEY:
+            if type(lora_module) != IA3Module:
+                lora_module = IA3Module()
+                lora.modules[key] = lora_module
             
+            if lora_key == "weight":
+                lora_module.w = weight.to(devices.device, dtype=devices.dtype)
+            elif lora_key == "on_input":
+                lora_module.on_input = weight
         else:
             assert False, f'Bad Lora layer name: {key_diffusers} - must end in lora_up.weight, lora_down.weight or alpha'
 
@@ -556,6 +575,14 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
     elif isinstance(module, FullModule):
         output_shape = module.weight.shape
         updown = module.weight.to(orig_weight.device, dtype=orig_weight.dtype)
+    
+    elif isinstance(module, IA3Module):
+        output_shape = [module.w.size(0), orig_weight.size(1)]
+        if module.on_input:
+            output_shape.reverse()
+        else:
+            module.w = module.w.reshape(-1, 1)
+        updown = orig_weight * module.w
     
     if hasattr(module, 'bias') and module.bias != None:
         updown = updown.reshape(module.bias.shape)
