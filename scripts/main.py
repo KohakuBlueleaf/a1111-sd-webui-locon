@@ -584,6 +584,14 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
             module.w = module.w.reshape(-1, 1)
         updown = orig_weight * module.w
     
+    else:
+        raise NotImplementedError(
+            f"Unknown module type: {type(module)}\n"
+            "If the type is one of "
+            "'LoraUpDownModule', 'LoraHadaModule', 'FullModule', 'IA3Module' "
+            "You may have other lora extension that conflict with locon extension."
+        )
+    
     if hasattr(module, 'bias') and module.bias != None:
         updown = updown.reshape(module.bias.shape)
         updown += module.bias.to(orig_weight.device, dtype=orig_weight.dtype)
