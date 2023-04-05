@@ -294,6 +294,7 @@ IA3_KEY = {
 }
 
 def load_lora(name, filename):
+    print('locon load lora method')
     lora = LoraModule(name)
     lora.mtime = os.path.getmtime(filename)
 
@@ -531,7 +532,7 @@ def _rebuild_cp_decomposition(up, down, mid):
 
 
 def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
-    if isinstance(module, LoraUpDownModule):
+    if module.__class__.__name__ == 'LoraUpDownModule':
         up = module.up_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         down = module.down_model.weight.to(orig_weight.device, dtype=orig_weight.dtype)
         
@@ -546,7 +547,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
                 output_shape += down.shape[2:]
             updown = _rebuild_conventional(up, down, output_shape)
         
-    elif isinstance(module, LoraHadaModule):
+    elif module.__class__.__name__ == 'LoraHadaModule':
         w1a = module.w1a.to(orig_weight.device, dtype=orig_weight.dtype)
         w1b = module.w1b.to(orig_weight.device, dtype=orig_weight.dtype)
         w2a = module.w2a.to(orig_weight.device, dtype=orig_weight.dtype)
@@ -572,11 +573,11 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
         
         updown = updown1 * updown2
     
-    elif isinstance(module, FullModule):
+    elif module.__class__.__name__ == 'FullModule':
         output_shape = module.weight.shape
         updown = module.weight.to(orig_weight.device, dtype=orig_weight.dtype)
     
-    elif isinstance(module, IA3Module):
+    elif module.__class__.__name__ == 'IA3Module':
         output_shape = [module.w.size(0), orig_weight.size(1)]
         if module.on_input:
             output_shape.reverse()
@@ -586,7 +587,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
     
     else:
         raise NotImplementedError(
-            f"Unknown module type: {type(module)}\n"
+            f"Unknown module type: {module.__class__.__name__}\n"
             "If the type is one of "
             "'LoraUpDownModule', 'LoraHadaModule', 'FullModule', 'IA3Module' "
             "You may have other lora extension that conflict with locon extension."
