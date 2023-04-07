@@ -304,15 +304,14 @@ class LoraKronModule:
         if self.t2 is None:
             return self.op(
                 x,
-                (torch.kron(self.w1a@self.w1b, self.w2a@self.w2b) + bias).view(self.shape),
+                (torch.kron(self.w1, self.w2a@self.w2b) + bias).view(self.shape),
                 **self.extra_args
             )
         else:
             # will raise NotImplemented Error
             return self.op(
                 x,
-                (pro3_outer(self.t1, self.w1a, self.w1b) 
-                 * pro3_outer(self.t2, self.w2a, self.w2b) + bias).view(self.shape),
+                (torch.kron(self.w1, pro3_outer(self.t2, self.w2a, self.w2b)) + bias).view(self.shape),
                 **self.extra_args
             )
 
@@ -684,7 +683,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
         if module.t2 is not None:
             t2 = module.t2.to(orig_weight.device, dtype=orig_weight.dtype)
             output_shape += t2.shape[2:] # [ac, bd, *kernel]
-            updown2 = pro3(t2, w2a, w2b)
+            updown2 = pro3_outer(t2, w2a, w2b)
         else:
             updown2 = _rebuild_conventional(w2a, w2b, output_shape_2)
         updown = torch.kron(updown1, updown2)
@@ -693,7 +692,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError(
             f"Unknown module type: {module.__class__.__name__}\n"
             "If the type is one of "
-            "'LoraUpDownModule', 'LoraHadaModule', 'FullModule', 'IA3Module' "
+            "'LoraUpDownModule', 'LoraHadaModule', 'FullModule', 'IA3Module', 'LoraKronModule'"
             "You may have other lora extension that conflict with locon extension."
         )
     
