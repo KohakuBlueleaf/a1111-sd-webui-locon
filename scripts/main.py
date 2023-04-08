@@ -724,7 +724,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
         
         output_shape = [w1.size(0)*w2.size(0), w1.size(1)*w2.size(1)]
         if len(orig_weight.shape) == 4:
-            output_shape += orig_weight.shape[2:]
+            output_shape = orig_weight.shape
         
         updown = make_kron(
             output_shape, w1, w2
@@ -748,7 +748,7 @@ def rebuild_weight(module, orig_weight: torch.Tensor) -> torch.Tensor:
     
     if orig_weight.size().numel() == updown.size().numel():
         updown = updown.reshape(orig_weight.shape)
-    
+    # print(torch.sum(updown))
     return updown
 
 
