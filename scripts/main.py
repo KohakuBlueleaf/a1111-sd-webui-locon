@@ -152,11 +152,15 @@ class LoraOnDisk:
 
 
 class LoraModule:
-    def __init__(self, name):
+    def __init__(self, name, lora_on_disk: LoraOnDisk):
         self.name = name
+        self.lora_on_disk = lora_on_disk
         self.multiplier = 1.0
         self.modules = {}
         self.mtime = None
+        
+        self.mentioned_name = None
+        """the text that was used to add lora to prompt - can be either name or an alias"""
 
 
 class FakeModule(torch.nn.Module):
@@ -361,12 +365,12 @@ KRON_KEY = {
     "lokr_w2_b",
 }
 
-def load_lora(name, filename):
+def load_lora(name, lora_on_disk):
     print('locon load lora method')
-    lora = LoraModule(name)
-    lora.mtime = os.path.getmtime(filename)
+    lora = LoraModule(name, lora_on_disk)
+    lora.mtime = os.path.getmtime(lora_on_disk.filename)
 
-    sd = sd_models.read_state_dict(filename)
+    sd = sd_models.read_state_dict(lora_on_disk.filename)
     is_sd2 = 'model_transformer_resblocks' in shared.sd_model.lora_layer_mapping
 
     keys_failed_to_match = []
@@ -604,7 +608,7 @@ def load_lora(name, filename):
 
     if len(keys_failed_to_match) > 0:
         print(shared.sd_model.lora_layer_mapping)
-        print(f"Failed to match keys when loading Lora {filename}: {keys_failed_to_match}")
+        print(f"Failed to match keys when loading Lora {lora_on_disk.filename}: {keys_failed_to_match}")
 
     return lora
 
