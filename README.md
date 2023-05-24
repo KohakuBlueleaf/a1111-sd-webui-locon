@@ -1,5 +1,9 @@
 # a1111-sd-webui-locon
 
+**This extension is basically deprecated and will not have any official update at all. Please consider to use a1111-sd-webui-lycoris instead**
+(but if there are new PRs, I will accept them)
+
+
 An extension for loading lycoris model in sd-webui. (include locon and loha)
 
 # THIS EXTENSION IS NOT FOR ADDITIONAL NETWORK
