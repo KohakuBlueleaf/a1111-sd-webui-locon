@@ -1,9 +1,16 @@
-# a1111-sd-webui-locon
+# [Deprecated] a1111-sd-webui-locon [Deprecated]
+
+### **YOU SHOULD USE a1111-sd-webui-lycoris**
+https://github.com/KohakuBlueleaf/a1111-sd-webui-lycoris
 
 **This extension is basically deprecated and will not have any official update at all. Please consider to use [a1111-sd-webui-lycoris](https://github.com/KohakuBlueleaf/a1111-sd-webui-lycoris) instead**
 (but if there are new PRs, I will accept them)
 **If you meet any problem or error when using this extension, please consider remove it and install lycoris extension ↑**
 
+
+---
+
+---
 
 An extension for loading lycoris model in sd-webui. (include locon and loha)
 
