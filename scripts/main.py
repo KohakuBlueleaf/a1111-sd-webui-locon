@@ -16,26 +16,6 @@ new_lora = 'lora_calc_updown' in dir(lora)
 from locon_compvis import LoConModule, LoConNetworkCompvis, create_network_and_apply_compvis
 
 
-try:
-    '''
-    Hijack Additional Network extension
-    '''
-    # skip addnet since don't support new version
-    raise
-    now_dir = os.path.dirname(os.path.abspath(__file__))
-    addnet_path = os.path.join(now_dir, '..', '..', 'sd-webui-additional-networks/scripts')
-    sys.path.append(addnet_path)
-    import lora_compvis
-    import scripts
-    scripts.lora_compvis = lora_compvis
-    scripts.lora_compvis.LoRAModule = LoConModule
-    scripts.lora_compvis.LoRANetworkCompvis = LoConNetworkCompvis
-    scripts.lora_compvis.create_network_and_apply_compvis = create_network_and_apply_compvis
-    print('LoCon Extension hijack addnet extension successfully')
-except:
-    print('Additional Network extension not installed, Only hijack built-in lora')
-
-
 '''
 Hijack sd-webui LoRA
 '''
